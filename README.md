@@ -72,6 +72,28 @@ Los servicios disponibles serán:
 
 ---
 
+## 💾 Respaldo y Recuperación (Backup & Restore)
+
+Como el entorno se despliega "limpio" desde GitHub, aquí tienes cómo mantener tus datos a salvo:
+
+### 1. Flujos de n8n (Workflows)
+Para que tus flujos aparezcan en un servidor nuevo:
+- **Exportar**: En tu n8n actual, ve a *Settings* > *Export Workflows* o usa la CLI de n8n para guardar los JSON en la carpeta `workflows/`.
+- **Sincronizar**: Sube los cambios a GitHub (`git add workflows/*.json && git commit ...`).
+- **Importar**: En el nuevo servidor, tras levantar Docker, importa los archivos JSON desde la interfaz de n8n.
+
+### 2. Base de Datos (SQL)
+Si tienes tablas o datos iniciales:
+- **Exportar**: Guarda tus scripts de creación de tablas en `sql/migrations/`.
+- **Automatizar**: Los archivos `.sql` que pongas en esa carpeta pueden ser configurados para ejecutarse al inicio de la base de datos si modificas el `docker-compose.yml`.
+
+### 3. Datos Persistentes (Carpeta `data/`)
+**¡IMPORTANTE!** La carpeta `data/` contiene tus bases de datos reales. 
+- **NO se sube a GitHub** (por seguridad y tamaño).
+- Si quieres mover tus datos de un servidor a otro, debes copiar esta carpeta manualmente (usando `scp` o `rsync`) por fuera de Git.
+
+---
+
 ## Notas de Seguridad
 - Asegúrate de cambiar todas las contraseñas por defecto en el archivo `.env`.
 - La carpeta `data/` se crea automáticamente para persistir los datos de los contenedores.
