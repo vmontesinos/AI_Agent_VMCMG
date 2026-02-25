@@ -1,518 +1,518 @@
-{
-  "name": "ChatConEntrenadorV3",
-  "nodes": [
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "d7d4aae1-e822-4d58-91f8-258e4e2a80b3",
-              "leftValue": "={{ $json.output[0].content[0].text }}",
-              "rightValue": "DATA_QUERY",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
+  {
+    "name": "ChatConEntrenadorV3",
+    "nodes": [
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "id": "d7d4aae1-e822-4d58-91f8-258e4e2a80b3",
+                "leftValue": "={{ $json.output[0].content[0].text }}",
+                "rightValue": "DATA_QUERY",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
               }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          -336,
+          -256
+        ],
+        "id": "cdaed4cb-aedf-44dc-bc15-e42492b9b88e",
+        "name": "If"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "{{ $json.output[0].content[0].text }}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          240,
+          -352
+        ],
+        "id": "4b06089d-eb50-4175-8f55-0e6927cf9abc",
+        "name": "Execute a SQL query",
+        "credentials": {
+          "postgres": {
+            "id": "x1vVEEJPSJmzsy9z",
+            "name": "Postgres Entrenador"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "updates": [
+            "message"
+          ],
+          "additionalFields": {}
+        },
+        "type": "n8n-nodes-base.telegramTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          -1250,
+          -250
+        ],
+        "id": "75ff5c83-d60d-497d-82c0-c5272075148a",
+        "name": "Telegram Trigger vmcmg_trainer_bot",
+        "webhookId": "8fa493fe-d6d8-4aa6-8ef5-83f429608efd",
+        "credentials": {
+          "telegramApi": {
+            "id": "MLLsJSCtdEseb1xI",
+            "name": "Telegram account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "GPT-4O-MINI"
+          },
+          "responses": {
+            "values": [
+              {
+                "role": "system",
+                "content": "Clasifica la pregunta del usuario en una de estas dos categorías:\n\nDATA_QUERY → requiere consultar datos personales almacenados en PostgreSQL (volumen, semanas, histórico, kilómetros, horas, comparaciones de periodos, etc).\n\nGENERAL_QUERY → pregunta general, opinión, información pública o asesoramiento que no requiere consultar datos personales.\n\nReglas:\n1. Si la pregunta mezcla análisis personal y general, clasifícala como DATA_QUERY.\n2. No expliques nada.\n3. Responde únicamente con una de estas dos palabras:\n   DATA_QUERY o  GENERAL_QUERY"
+              },
+              {
+                "content": "={{ $json.message.text }}"
+              }
+            ]
+          },
+          "builtInTools": {},
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "typeVersion": 2.1,
+        "position": [
+          -688,
+          -256
+        ],
+        "id": "a999b47d-2938-4a6f-a8e4-799a092e0a3e",
+        "name": "Decide QUERY",
+        "credentials": {
+          "openAiApi": {
+            "id": "Vs00mg6MRuU2lQN1",
+            "name": "OpenAi account n0d"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "GPT-4O-MINI"
+          },
+          "responses": {
+            "values": [
+              {
+                "role": "system",
+                "content": "=Tu única tarea es generar una consulta SQL SELECT válida en PostgreSQL.\n\nContexto Temporal:\nHoy es {{ $now.format('EEEE, dd MMMM yyyy HH:mm') }}.\n\nContexto de Tabla:\nTabla: public.strava_activities\nCampos:\n- strava_id (bigint)\n- name (text)\n- type (text)\n- sport_type (text)\n- start_date (timestamp)\n- distance (float, en metros)\n- moving_time (integer, en segundos)\n- total_elevation_gain (float)\n- average_heartrate (float)\n- max_heartrate (float)\n- suffer_score (integer)\n- metadata (jsonb)\n\nReglas críticas de SQL:\n1. Solo SELECT. Sé conciso.\n2. Si comparas periodos (ej. esta semana vs anterior), usa UNION o CASE para devolver ambos con una columna 'periodo' que los identifique.\n3. Unidades: \n   - Distancia: siempre SUM(distance)/1000 as total_km\n   - Tiempo: siempre SUM(moving_time)/3600 as total_horas\n4. Filtros de tiempo relativos:\n   - Esta semana (desde lunes): start_date >= DATE_TRUNC('week', CURRENT_DATE)\n   - Semana pasada: start_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '1 week') AND start_date < DATE_TRUNC('week', CURRENT_DATE)\n   - Este mes: start_date >= DATE_TRUNC('month', CURRENT_DATE)\n5. No uses bloques markdown ni explicaciones. Solo el código SQL plano."
+              },
+              {
+                "content": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.text }}"
+              }
+            ]
+          },
+          "builtInTools": {},
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "typeVersion": 2.1,
+        "position": [
+          -112,
+          -352
+        ],
+        "id": "1eeda6ee-889e-46e6-b1a7-19da8d288833",
+        "name": "Genera SQL",
+        "credentials": {
+          "openAiApi": {
+            "id": "Vs00mg6MRuU2lQN1",
+            "name": "OpenAi account n0d"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "modelId": {
+            "__rl": true,
+            "value": "gpt-4o-mini",
+            "mode": "list",
+            "cachedResultName": "GPT-4O-MINI"
+          },
+          "responses": {
+            "values": [
+              {
+                "role": "system",
+                "content": "Eres un entrenador personal con enfoque analítico y motivador.\n\nRecibes resultados reales obtenidos de PostgreSQL en formato JSON.\n\nTu tarea:\n1. Analizar los datos.\n2. Si hay dos periodos, calcular variación porcentual.\n3. Si el JSON está vacío o los valores son 0, responde amablemente que no hay actividades registradas en ese periodo.\n4. No inventar datos.\n5. Formato: Markdown enriquecido (negritas, listas).\n\nFormato obligatorio:\n- Kilómetros con 2 decimales.\n- Horas con 2 decimales.\n- Variación porcentual con 1 decimal.\n- Respuesta clara y estructurada."
+              },
+              {
+                "content": "=Pregunta original:\n{{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.text }}\n\nResultados obtenidos:\n{{ JSON.stringify($json, null, 2) }}"
+              }
+            ]
+          },
+          "builtInTools": {},
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.openAi",
+        "typeVersion": 2.1,
+        "position": [
+          464,
+          -352
+        ],
+        "id": "fd207121-3bea-4a7a-bd44-8b8d3c24304b",
+        "name": "Analiza Datos SQL",
+        "credentials": {
+          "openAiApi": {
+            "id": "Vs00mg6MRuU2lQN1",
+            "name": "OpenAi account n0d"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.text }}",
+          "options": {
+            "systemMessage": "Eres un experto entrenador personal. Usa la memoria para mantener el contexto de la conversación."
+          }
+        },
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          16,
+          -64
+        ],
+        "id": "2d683abc-fc12-44f0-8a1a-6c6cec99494a",
+        "name": "AI Agent"
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4o-mini"
+          },
+          "builtInTools": {},
+          "options": {}
+        },
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
+        "position": [
+          -144,
+          208
+        ],
+        "id": "19aed375-6334-41a9-b104-fb79884d0521",
+        "name": "OpenAI Chat Model",
+        "credentials": {
+          "openAiApi": {
+            "id": "Vs00mg6MRuU2lQN1",
+            "name": "OpenAi account n0d"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
+          "contextWindowLength": 20
+        },
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.3,
+        "position": [
+          16,
+          208
+        ],
+        "id": "21b68434-cca2-4ef3-bf83-e6abf6ef6521",
+        "name": "Simple Memory"
+      },
+      {
+        "parameters": {
+          "chatId": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
+          "text": "={{ $json.output }}",
+          "additionalFields": {
+            "parse_mode": "Markdown",
+            "appendAttribution": false
+          }
+        },
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          640,
+          -64
+        ],
+        "id": "2781ea7e-1005-446e-9eb1-36a77abb33a2",
+        "name": "Send a text general",
+        "webhookId": "b61bfacf-790e-4657-8fa0-6b0f3d37ffe8",
+        "credentials": {
+          "telegramApi": {
+            "id": "MLLsJSCtdEseb1xI",
+            "name": "Telegram account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "chatId": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
+          "text": "={{ $json.output[0].content[0].text }}",
+          "additionalFields": {
+            "parse_mode": "Markdown",
+            "appendAttribution": false
+          }
+        },
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          816,
+          -256
+        ],
+        "id": "543aa45b-0ddd-45a3-822f-ef77d13f2433",
+        "name": "Send a text messages data",
+        "webhookId": "b61bfacf-790e-4657-8fa0-6b0f3d37ffe8",
+        "credentials": {
+          "telegramApi": {
+            "id": "MLLsJSCtdEseb1xI",
+            "name": "Telegram account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 3
+            },
+            "conditions": [
+              {
+                "id": "2e06c747-817c-474c-8f43-16270cf7520e",
+                "leftValue": "={{ $json.message.text.toLowerCase() }}",
+                "rightValue": "/sync",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          -950,
+          -250
+        ],
+        "id": "7662828b-f418-4721-aef4-443b749ed4e4",
+        "name": "Is Sync Command?"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://strava_sync:8080/sync",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Sync-Secret",
+                "value": "1mp0rtad0r0"
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          -700,
+          -50
+        ],
+        "id": "1e3c8340-971c-4b68-80f0-c65113d09d3b",
+        "name": "Trigger Sidecar Sync"
+      },
+      {
+        "parameters": {
+          "chatId": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
+          "text": "*🔄 Sincronizando datos de Strava...*\n\nHe recibido tu orden. Estoy conectando con Strava para descargar tus últimas actividades. Te avisaré cuando termine.",
+          "additionalFields": {
+            "parse_mode": "Markdown"
+          }
+        },
+        "type": "n8n-nodes-base.telegram",
+        "typeVersion": 1.2,
+        "position": [
+          -450,
+          -50
+        ],
+        "id": "76961445-9836-4074-a09c-36ec177f0a82",
+        "name": "Notify Sync Started"
+      }
+    ],
+    "pinData": {},
+    "connections": {
+      "If": {
+        "main": [
+          [
+            {
+              "node": "Genera SQL",
+              "type": "main",
+              "index": 0
             }
           ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        -336,
-        -256
-      ],
-      "id": "cdaed4cb-aedf-44dc-bc15-e42492b9b88e",
-      "name": "If"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "{{ $json.output[0].content[0].text }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        240,
-        -352
-      ],
-      "id": "4b06089d-eb50-4175-8f55-0e6927cf9abc",
-      "name": "Execute a SQL query",
-      "credentials": {
-        "postgres": {
-          "id": "x1vVEEJPSJmzsy9z",
-          "name": "Postgres Entrenador"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "updates": [
-          "message"
-        ],
-        "additionalFields": {}
-      },
-      "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1.2,
-      "position": [
-        -1250,
-        -250
-      ],
-      "id": "75ff5c83-d60d-497d-82c0-c5272075148a",
-      "name": "Telegram Trigger vmcmg_trainer_bot",
-      "webhookId": "8fa493fe-d6d8-4aa6-8ef5-83f429608efd",
-      "credentials": {
-        "telegramApi": {
-          "id": "MLLsJSCtdEseb1xI",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "gpt-4o-mini",
-          "mode": "list",
-          "cachedResultName": "GPT-4O-MINI"
-        },
-        "responses": {
-          "values": [
+          [
             {
-              "role": "system",
-              "content": "Clasifica la pregunta del usuario en una de estas dos categorías:\n\nDATA_QUERY → requiere consultar datos personales almacenados en PostgreSQL (volumen, semanas, histórico, kilómetros, horas, comparaciones de periodos, etc).\n\nGENERAL_QUERY → pregunta general, opinión, información pública o asesoramiento que no requiere consultar datos personales.\n\nReglas:\n1. Si la pregunta mezcla análisis personal y general, clasifícala como DATA_QUERY.\n2. No expliques nada.\n3. Responde únicamente con una de estas dos palabras:\n   DATA_QUERY o  GENERAL_QUERY"
-            },
-            {
-              "content": "={{ $json.message.text }}"
+              "node": "AI Agent",
+              "type": "main",
+              "index": 0
             }
           ]
-        },
-        "builtInTools": {},
-        "options": {}
+        ]
       },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.1,
-      "position": [
-        -688,
-        -256
-      ],
-      "id": "a999b47d-2938-4a6f-a8e4-799a092e0a3e",
-      "name": "Decide QUERY",
-      "credentials": {
-        "openAiApi": {
-          "id": "Vs00mg6MRuU2lQN1",
-          "name": "OpenAi account n0d"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "gpt-4o-mini",
-          "mode": "list",
-          "cachedResultName": "GPT-4O-MINI"
-        },
-        "responses": {
-          "values": [
+      "Execute a SQL query": {
+        "main": [
+          [
             {
-              "role": "system",
-              "content": "=Tu única tarea es generar una consulta SQL SELECT válida en PostgreSQL.\n\nContexto Temporal:\nHoy es {{ $now.format('EEEE, dd MMMM yyyy HH:mm') }}.\n\nContexto de Tabla:\nTabla: public.strava_activities\nCampos:\n- strava_id (bigint)\n- name (text)\n- type (text)\n- sport_type (text)\n- start_date (timestamp)\n- distance (float, en metros)\n- moving_time (integer, en segundos)\n- total_elevation_gain (float)\n- average_heartrate (float)\n- max_heartrate (float)\n- suffer_score (integer)\n- metadata (jsonb)\n\nReglas estrictas:\n1. Solo SELECT.\n2. No expliques nada.\n3. No añadas texto adicional.\n4. Devuelve únicamente la consulta SQL.\n5. Unidades:\n   - distance a km usando SUM(distance)/1000\n   - moving_time a horas usando SUM(moving_time)/3600\n   - average_heartrate y max_heartrate son latidos por minuto.\n6. Filtros de tiempo:\n   - Esta semana: start_date >= DATE_TRUNC('week', CURRENT_DATE)\n   - Semana pasada: start_date >= DATE_TRUNC('week', CURRENT_DATE - INTERVAL '1 week') AND start_date < DATE_TRUNC('week', CURRENT_DATE)\n   - Este mes: start_date >= DATE_TRUNC('month', CURRENT_DATE)\n7. Si mencionan intensidad o esfuerzo, usa suffer_score o heartrate.\n\nDevuelve únicamente la consulta SQL en texto plano.\nNo uses bloques markdown. No uses ```.\nSolo la consulta."
-            },
-            {
-              "content": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.text }}"
+              "node": "Analiza Datos SQL",
+              "type": "main",
+              "index": 0
             }
           ]
-        },
-        "builtInTools": {},
-        "options": {}
+        ]
       },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.1,
-      "position": [
-        -112,
-        -352
-      ],
-      "id": "1eeda6ee-889e-46e6-b1a7-19da8d288833",
-      "name": "Genera SQL",
-      "credentials": {
-        "openAiApi": {
-          "id": "Vs00mg6MRuU2lQN1",
-          "name": "OpenAi account n0d"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "modelId": {
-          "__rl": true,
-          "value": "gpt-4o-mini",
-          "mode": "list",
-          "cachedResultName": "GPT-4O-MINI"
-        },
-        "responses": {
-          "values": [
+      "Telegram Trigger vmcmg_trainer_bot": {
+        "main": [
+          [
             {
-              "role": "system",
-              "content": "Eres un entrenador personal con enfoque analítico y motivador.\n\nRecibes resultados reales obtenidos de PostgreSQL en formato JSON.\n\nTu tarea:\n1. Analizar los datos.\n2. Si hay dos periodos, calcular variación porcentual.\n3. Si el JSON está vacío o los valores son 0, responde amablemente que no hay actividades registradas en ese periodo.\n4. No inventar datos.\n5. Formato: Markdown enriquecido (negritas, listas).\n\nFormato obligatorio:\n- Kilómetros con 2 decimales.\n- Horas con 2 decimales.\n- Variación porcentual con 1 decimal.\n- Respuesta clara y estructurada."
-            },
-            {
-              "content": "=Pregunta original:\n{{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.text }}\n\nResultados obtenidos:\n{{ JSON.stringify($json, null, 2) }}"
+              "node": "Is Sync Command?",
+              "type": "main",
+              "index": 0
             }
           ]
-        },
-        "builtInTools": {},
-        "options": {}
+        ]
       },
-      "type": "@n8n/n8n-nodes-langchain.openAi",
-      "typeVersion": 2.1,
-      "position": [
-        464,
-        -352
-      ],
-      "id": "fd207121-3bea-4a7a-bd44-8b8d3c24304b",
-      "name": "Analiza Datos SQL",
-      "credentials": {
-        "openAiApi": {
-          "id": "Vs00mg6MRuU2lQN1",
-          "name": "OpenAi account n0d"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.text }}",
-        "options": {
-          "systemMessage": "Eres un experto entrenador personal. Usa la memoria para mantener el contexto de la conversación."
-        }
-      },
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 3.1,
-      "position": [
-        16,
-        -64
-      ],
-      "id": "2d683abc-fc12-44f0-8a1a-6c6cec99494a",
-      "name": "AI Agent"
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "gpt-4o-mini"
-        },
-        "builtInTools": {},
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.3,
-      "position": [
-        -144,
-        208
-      ],
-      "id": "19aed375-6334-41a9-b104-fb79884d0521",
-      "name": "OpenAI Chat Model",
-      "credentials": {
-        "openAiApi": {
-          "id": "Vs00mg6MRuU2lQN1",
-          "name": "OpenAi account n0d"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "sessionIdType": "customKey",
-        "sessionKey": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
-        "contextWindowLength": 20
-      },
-      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
-      "typeVersion": 1.3,
-      "position": [
-        16,
-        208
-      ],
-      "id": "21b68434-cca2-4ef3-bf83-e6abf6ef6521",
-      "name": "Simple Memory"
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
-        "text": "={{ $json.output }}",
-        "additionalFields": {
-          "parse_mode": "Markdown",
-          "appendAttribution": false
-        }
-      },
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        640,
-        -64
-      ],
-      "id": "2781ea7e-1005-446e-9eb1-36a77abb33a2",
-      "name": "Send a text general",
-      "webhookId": "b61bfacf-790e-4657-8fa0-6b0f3d37ffe8",
-      "credentials": {
-        "telegramApi": {
-          "id": "MLLsJSCtdEseb1xI",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
-        "text": "={{ $json.output[0].content[0].text }}",
-        "additionalFields": {
-          "parse_mode": "Markdown",
-          "appendAttribution": false
-        }
-      },
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        816,
-        -256
-      ],
-      "id": "543aa45b-0ddd-45a3-822f-ef77d13f2433",
-      "name": "Send a text messages data",
-      "webhookId": "b61bfacf-790e-4657-8fa0-6b0f3d37ffe8",
-      "credentials": {
-        "telegramApi": {
-          "id": "MLLsJSCtdEseb1xI",
-          "name": "Telegram account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
+      "Decide QUERY": {
+        "main": [
+          [
             {
-              "id": "2e06c747-817c-474c-8f43-16270cf7520e",
-              "leftValue": "={{ $json.message.text.toLowerCase() }}",
-              "rightValue": "/sync",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
+              "node": "If",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Genera SQL": {
+        "main": [
+          [
+            {
+              "node": "Execute a SQL query",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Analiza Datos SQL": {
+        "main": [
+          [
+            {
+              "node": "Send a text messages data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Agent": {
+        "main": [
+          [
+            {
+              "node": "Send a text general",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Simple Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "AI Agent",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is Sync Command?": {
+        "main": [
+          [
+            {
+              "node": "Trigger Sidecar Sync",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Notify Sync Started",
+              "type": "main",
+              "index": 0
             }
           ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        -950,
-        -250
-      ],
-      "id": "7662828b-f418-4721-aef4-443b749ed4e4",
-      "name": "Is Sync Command?"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "http://strava_sync:8080/sync",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
+          [
             {
-              "name": "X-Sync-Secret",
-              "value": "1mp0rtad0r0"
+              "node": "Decide QUERY",
+              "type": "main",
+              "index": 0
             }
           ]
-        }
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        -700,
-        -50
-      ],
-      "id": "1e3c8340-971c-4b68-80f0-c65113d09d3b",
-      "name": "Trigger Sidecar Sync"
-    },
-    {
-      "parameters": {
-        "chatId": "={{ $('Telegram Trigger vmcmg_trainer_bot').item.json.message.chat.id }}",
-        "text": "*🔄 Sincronizando datos de Strava...*\n\nHe recibido tu orden. Estoy conectando con Strava para descargar tus últimas actividades. Te avisaré cuando termine.",
-        "additionalFields": {
-          "parse_mode": "Markdown"
-        }
-      },
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [
-        -450,
-        -50
-      ],
-      "id": "76961445-9836-4074-a09c-36ec177f0a82",
-      "name": "Notify Sync Started"
-    }
-  ],
-  "pinData": {},
-  "connections": {
-    "If": {
-      "main": [
-        [
-          {
-            "node": "Genera SQL",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "AI Agent",
-            "type": "main",
-            "index": 0
-          }
         ]
-      ]
+      }
     },
-    "Execute a SQL query": {
-      "main": [
-        [
-          {
-            "node": "Analiza Datos SQL",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "active": false,
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate",
+      "availableInMCP": false
     },
-    "Telegram Trigger vmcmg_trainer_bot": {
-      "main": [
-        [
-          {
-            "node": "Is Sync Command?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "versionId": "2c371f36-9f7b-450b-8e37-b3ef17e386a6",
+    "meta": {
+      "templateCredsSetupCompleted": true,
+      "instanceId": "672e4e514a620aad4e3b835fa01a3ddf1628d300a8b46963eaad935f47d96220"
     },
-    "Decide QUERY": {
-      "main": [
-        [
-          {
-            "node": "If",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Genera SQL": {
-      "main": [
-        [
-          {
-            "node": "Execute a SQL query",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Analiza Datos SQL": {
-      "main": [
-        [
-          {
-            "node": "Send a text messages data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Agent": {
-      "main": [
-        [
-          {
-            "node": "Send a text general",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "OpenAI Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Simple Memory": {
-      "ai_memory": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_memory",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Is Sync Command?": {
-      "main": [
-        [
-          {
-            "node": "Trigger Sidecar Sync",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Notify Sync Started",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Decide QUERY",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
-  "active": false,
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate",
-    "availableInMCP": false
-  },
-  "versionId": "2c371f36-9f7b-450b-8e37-b3ef17e386a6",
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "672e4e514a620aad4e3b835fa01a3ddf1628d300a8b46963eaad935f47d96220"
-  },
-  "id": "BlhqFIiBMIeTqjaS",
-  "tags": []
-}
+    "id": "BlhqFIiBMIeTqjaS",
+    "tags": []
+  }
