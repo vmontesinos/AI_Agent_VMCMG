@@ -13,7 +13,6 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
 
-
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant
@@ -22,6 +21,19 @@ services:
       - ./data/qdrant:/qdrant/storage
     networks:
       - backend
+
+  strava_sync:
+    build:
+      context: ./strava_app
+      dockerfile: Dockerfile
+    container_name: strava_sync
+    restart: unless-stopped
+    env_file:
+      - ./strava_app/.env
+    networks:
+      - backend
+    depends_on:
+      - postgres
 
   n8n:
     image: n8nio/n8n:latest
@@ -35,6 +47,7 @@ services:
     depends_on:
       - postgres
       - qdrant
+      - strava_sync
     networks:
       - backend
       - proxy

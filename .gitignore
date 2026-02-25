@@ -1,2 +1,6 @@
 data/
 .env
+strava_app/.env
+strava_app/venv/
+__pycache__/
+*.pyc

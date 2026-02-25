@@ -1,103 +1,164 @@
 # AI Agent VMCMG 🚀
 
-Este proyecto despliega un entorno de automatización basado en **n8n**, con base de datos **PostgreSQL**, motor de vectores **Qdrant** y un proxy inverso **Nginx**.
+Entorno de automatización completo con **n8n**, **PostgreSQL**, **Qdrant**, **Nginx** y un módulo de **integración con Strava** para un agente IA de entrenamiento personal.
 
-## Estructura del Proyecto
+## Arquitectura
 
-- `data/`: Almacenamiento persistente para bases de datos (ignorado en Git).
-- `docs/`: Documentación y recursos.
-- `nginx/`: Configuración del servidor Nginx.
-- `pdfs/`: Carpeta para procesar documentos PDF.
-- `scripts/`: Utilidades de instalación y mantenimiento.
-- `sql/`: Scripts de migración y base de datos.
-- `workflows/`: Exportaciones de flujos de n8n.
+```
+                 ┌──────────┐    HTTP Request    ┌──────────────┐
+Internet ──────► │  Nginx   │ ─────────────────► │     n8n      │
+                 └──────────┘                    └──────┬───────┘
+                                                        │ POST /sync
+                                                        ▼
+                                                 ┌──────────────┐
+                                                 │ strava_sync  │  ← Python sidecar
+                                                 │ (webhook:8080)│
+                                                 └──────┬───────┘
+                                                        │ Upsert
+                                                        ▼
+                                                 ┌──────────────┐
+                                                 │  PostgreSQL  │ ◄── AI Trainer queries
+                                                 └──────────────┘
+```
+
+## Servicios Docker
+
+| Contenedor | Imagen | Puerto | Función |
+|---|---|---|---|
+| `n8n` | n8nio/n8n:latest | 5678 (interno) | Automatización de flujos |
+| `db_postgres` | postgres:15 | 5432 (localhost) | Base de datos principal |
+| `qdrant` | qdrant/qdrant | 6333 (interno) | Vectores para IA (RAG) |
+| `nginx` | nginx:alpine | 80/443 | Proxy inverso + SSL |
+| `strava_sync` | python:3.12-slim | 8080 (interno) | Importador de Strava |
 
 ---
 
-## Guía de Despliegue (Ubuntu Limpio)
+## 🏃 Módulo Strava – AI Personal Trainer
 
-Sigue estos pasos para desplegar el proyecto en un servidor Ubuntu recién instalado.
+### ¿Qué hace?
 
-### 1. Preparar el Sistema e Instalar Docker
+El contenedor `strava_sync` sincroniza automáticamente las actividades de Strava con PostgreSQL. El agente de IA en n8n puede consultar la base de datos para responder preguntas como:
 
-Primero, descarga el repositorio o sube el script de instalación. El proyecto incluye un script automatizado para instalar Docker y sus dependencias.
+- _"¿Cuántos km corrí en marzo de 2025?"_
+- _"¿Cuál fue mi ritmo cardíaco medio en las salidas largas?"_
+- _"Compara mi rendimiento de este mes vs el anterior."_
+
+### Esquema de la base de datos
+
+Tabla `strava_activities` en `entrenador_db`:
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `strava_id` | BIGINT PK | ID único de Strava |
+| `type` | TEXT | Tipo de actividad (Run, Ride…) |
+| `start_date` | TIMESTAMPTZ | Fecha/hora de inicio (UTC) |
+| `distance` | FLOAT | Distancia en **metros** (÷1000 → km) |
+| `moving_time` | INTEGER | Tiempo en **segundos** |
+| `total_elevation_gain` | FLOAT | Desnivel en metros |
+| `average_heartrate` | FLOAT | FC media (bpm) |
+| `max_heartrate` | FLOAT | FC máxima (bpm) |
+| `suffer_score` | INTEGER | Índice de sufrimiento Strava |
+| `metadata` | JSONB | Datos extra (gear, elevación min/max) |
+| `synced_at` | TIMESTAMPTZ | Timestamp de última sync |
+
+### Sincronización inteligente
+
+El script `sync_strava.py` es **incremental**: en cada ejecución consulta la fecha de la última actividad en la BD y sólo descarga lo nuevo. El primer arranque hace la carga histórica del último año.
+
+### Archivos del módulo (`strava_app/`)
+
+```
+strava_app/
+├── Dockerfile              # python:3.12-slim con dependencias
+├── requirements.txt        # requests, psycopg2-binary, python-dotenv
+├── .env                    # Credenciales (NO se sube a git)
+├── .env.example            # Plantilla de variables
+├── scripts/
+│   ├── sync_strava.py      # Lógica principal de sincronización
+│   ├── webhook_server.py   # Servidor HTTP que n8n activa vía POST /sync
+│   ├── get_strava_auth_url.py     # Genera URL de autorización OAuth2
+│   └── exchange_code_for_token.py # Intercambia código por refresh_token
+└── sql/
+    └── schema.sql          # DDL de la tabla strava_activities
+```
+
+---
+
+## Guía de Despliegue
+
+### 1. Instalar Docker
 
 ```bash
-# Otorgar permisos de ejecución al script
 chmod +x scripts/instala_docker.sh
-
-# Ejecutar el script (requiere sudo)
 sudo ./scripts/instala_docker.sh
 ```
 
-### 2. Configuración de Entorno
-
-Crea un archivo `.env` en la raíz del proyecto basado en tus necesidades. Debe contener las credenciales de la base de datos y la configuración de n8n.
+### 2. Configurar entornos
 
 ```bash
-# Ejemplo de contenido para .env
-POSTGRES_USER=tu_usuario
-POSTGRES_PASSWORD=tu_password
-POSTGRES_DB=entrenador_db
+# Variables principales (n8n, PostgreSQL)
+cp .env.example .env
+# Editar con tus credenciales
 
-N8N_BASIC_AUTH_USER=admin@tusitio.com
-N8N_BASIC_AUTH_PASSWORD=tu_password_seguro
-N8N_ENCRYPTION_KEY=una_clave_aleatoria_larga
-
-N8N_HOST=tu-dominio.com
-WEBHOOK_URL=https://tu-dominio.com/
+# Variables de Strava
+cp strava_app/.env.example strava_app/.env
+# Añadir CLIENT_ID, CLIENT_SECRET y REFRESH_TOKEN
 ```
 
-### 3. Levantar los Servicios
-
-Una vez configurado el entorno, levanta todos los contenedores usando Docker Compose:
+### 3. Autorización Strava (una sola vez)
 
 ```bash
-sudo docker compose up -d
+# 3a. Generar URL de autorización
+python3 strava_app/scripts/get_strava_auth_url.py
+# → Visita la URL y autoriza la app
+
+# 3b. Canjear código por token permanente
+# Añade STRAVA_AUTH_CODE=codigo_del_redirect a strava_app/.env
+python3 strava_app/scripts/exchange_code_for_token.py
+# → Copia el REFRESH_TOKEN generado al .env
 ```
 
-### 4. Verificar el Estado
-
-Puedes comprobar que todos los servicios están corriendo correctamente con:
+### 4. Levantar servicios
 
 ```bash
-sudo docker compose ps
+docker compose up -d
 ```
 
-Los servicios disponibles serán:
-- **n8n**: Automatización de flujos.
-- **PostgreSQL**: Base de datos principal.
-- **Qdrant**: Base de datos vectorial para IA.
-- **Nginx**: Proxy inverso para acceso seguro.
+### 5. Carga inicial y verificación
+
+```bash
+# Verificar tabla
+docker exec -t db_postgres psql -U entrenador -d entrenador_db -c "SELECT COUNT(*) FROM strava_activities;"
+```
+
+O desde n8n: importa `workflows/StravaDailySync.json` y ejecuta el **Manual Trigger**.
 
 ---
 
-## 💾 Respaldo y Recuperación (Backup & Restore)
+## Flujos n8n
 
-Como el entorno se despliega "limpio" desde GitHub, aquí tienes cómo mantener tus datos a salvo:
-
-### 1. Flujos de n8n (Workflows)
-Para que tus flujos aparezcan en un servidor nuevo:
-- **Exportar**: En tu n8n actual, ve a *Settings* > *Export Workflows* o usa la CLI de n8n para guardar los JSON en la carpeta `workflows/`.
-- **Sincronizar**: Sube los cambios a GitHub (`git add workflows/*.json && git commit ...`).
-- **Importar**: En el nuevo servidor, tras levantar Docker, importa los archivos JSON desde la interfaz de n8n.
-
-### 2. Base de Datos (SQL)
-Si tienes tablas o datos iniciales:
-- **Exportar**: Guarda tus scripts de creación de tablas en `sql/migrations/`.
-- **Automatizar**: Los archivos `.sql` que pongas en esa carpeta pueden ser configurados para ejecutarse al inicio de la base de datos si modificas el `docker-compose.yml`.
-
-### 3. Datos Persistentes (Carpeta `data/`)
-**¡IMPORTANTE!** La carpeta `data/` contiene tus bases de datos reales. 
-- **NO se sube a GitHub** (por seguridad y tamaño).
-- Si quieres mover tus datos de un servidor a otro, debes copiar esta carpeta manualmente (usando `scp` o `rsync`) por fuera de Git.
+| Workflow | Descripción |
+|---|---|
+| `StravaDailySync.json` | Sincroniza Strava → PostgreSQL. Schedule Trigger (07:00) + HTTP Request al sidecar. |
 
 ---
 
-## Notas de Seguridad
-- Asegúrate de cambiar todas las contraseñas por defecto en el archivo `.env`.
-- La carpeta `data/` se crea automáticamente para persistir los datos de los contenedores.
-- Los certificados SSL deben ser gestionados a través de Nginx o un proveedor externo.
+## Respaldo
+
+| Dato | Estrategia |
+|---|---|
+| Flujos n8n | Exportar JSON → carpeta `workflows/` → `git commit` |
+| Schema SQL | `sql/` en este repo |
+| Datos (`data/`) | **NO en git**. Copiar manualmente con `scp`/`rsync` |
+| Credenciales (`.env`) | **NO en git**. Gestionar con gestor de secretos o manual |
+
+---
+
+## Seguridad
+
+- Los archivos `.env` están en `.gitignore`.
+- La comunicación entre `n8n` y `strava_sync` se protege con `X-Sync-Secret`.
+- PostgreSQL solo está expuesto en `127.0.0.1:5432`.
 
 ## Autor
-Victor - [vmontesinos](https://github.com/vmontesinos)
+Victor — [vmontesinos](https://github.com/vmontesinos)
