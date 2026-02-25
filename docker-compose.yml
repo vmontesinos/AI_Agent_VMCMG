@@ -30,6 +30,11 @@ services:
     restart: unless-stopped
     env_file:
       - ./strava_app/.env
+    environment:
+      - DB_HOST=db_postgres
+      - DB_PORT=5432
+    ports:
+      - "127.0.0.1:8080:8080"
     networks:
       - backend
     depends_on:
