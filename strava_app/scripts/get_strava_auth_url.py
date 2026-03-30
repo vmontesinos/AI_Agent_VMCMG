@@ -8,7 +8,7 @@ def get_auth_url():
         print("Error: STRAVA_CLIENT_ID not found in .env file")
         return
     
-    redirect_uri = "https://n0.vmcmg.com/rest/oauth2-credential/callback"
+    redirect_uri = os.getenv("STRAVA_REDIRECT_URI", "https://n0.vmcmg.com/rest/oauth2-credential/callback")
     scope = "read,activity:read_all"
     url = f"https://www.strava.com/oauth/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&approval_prompt=force&scope={scope}"
     
