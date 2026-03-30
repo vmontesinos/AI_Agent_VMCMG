@@ -1,4 +1,4 @@
-# AI Agent VMCMG 🚀
+ -h# AI Agent VMCMG 🚀
 
 Entorno de automatización completo con **n8n**, **PostgreSQL**, **Qdrant**, **Nginx** y un módulo de **integración con Strava** para un agente IA de entrenamiento personal.
 
